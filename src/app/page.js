@@ -29,7 +29,7 @@ export default function HomePage() {
   // Contact Popup State
   const [showContactPopup, setShowContactPopup] = useState(false);
 
-  // Admin Operational Config Profile
+  // Admin Operational Config Profile (Default values linked to your exact primary phone parameters)
   const [adminConfig, setAdminConfig] = useState({
     name: '🔴 System Admin',
     email: 'admin@peninsula.com',
@@ -70,7 +70,10 @@ export default function HomePage() {
       const res = await fetch('/api/listings');
       const data = await res.json();
       if (Array.isArray(data)) {
+        // FILTER: Keep ONLY Premium or Ultra Premium listings for Home page
         const premiumOnly = data.filter(ad => ad.ad_type === 'ultra_premium' || ad.ad_type === 'premium');
+
+        // Sort: Ultra Premium -> Premium
         const sorted = [...premiumOnly].sort((a, b) => {
           const priority = { ultra_premium: 3, premium: 2 };
           const pA = priority[a.ad_type] || 2;
@@ -130,6 +133,10 @@ export default function HomePage() {
       setIsLoggedIn(true);
       setUserRole('admin');
       localStorage.setItem('userRole', 'admin');
+      
+      // Middleware session cookie deployment logic
+      document.cookie = "userRole=admin; path=/; max-age=86400"; 
+      
       triggerToast('🎉 Welcome back, Admin!', 'success');
     } else {
       setIsLoggedIn(true);
@@ -147,6 +154,10 @@ export default function HomePage() {
     setIsLoggedIn(false);
     setUserRole('user');
     localStorage.removeItem('userRole');
+    
+    // Clear session cookies for route guard block safety
+    document.cookie = "userRole=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    
     setShowAuthDropdown(false);
     triggerToast('🚪 Session logged out.', 'info');
   };
@@ -207,7 +218,7 @@ export default function HomePage() {
       <div>
         {/* TOAST CONTAINER */}
         {toast.show && (
-          <div className="fixed bottom-6 right-6 z-50 px-6 py-4 rounded-2xl shadow-2xl border bg-emerald-50 text-emerald-800 border-emerald-200 animate-in fade-in slide-in-from-bottom-5">
+          <div className="fixed bottom-6 right-6 z-50 px-6 py-4 rounded-2xl shadow-2xl border border-emerald-200 bg-emerald-50 text-emerald-800 animate-in fade-in slide-in-from-bottom-5 duration-300">
             <span>{toast.message}</span>
           </div>
         )}
@@ -216,7 +227,7 @@ export default function HomePage() {
         <nav className="bg-[#0A1128] border-b border-amber-500/20 sticky top-0 z-40 shadow-md">
           <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between relative">
             <div className="flex items-center space-x-3">
-              <span className="text-xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-500">
+              <span className="text-lg md:text-xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-500">
                 <a href="/">PENINSULA COMMERCIAL</a>
               </span>
             </div>
@@ -338,10 +349,17 @@ export default function HomePage() {
             <div className="lg:col-span-8 space-y-6">
               <h2 className="text-lg font-black uppercase tracking-wider text-[#0A1128] border-b pb-3">👑 Featured Properties For You</h2>
 
+              {/* SKELETON FEED FOR LOADING / OFFLINE DELAY */}
               {loading ? (
                 <div className="space-y-6">
                   {[1, 2].map((id) => (
-                    <div key={id} className="bg-white rounded-2xl p-4 border border-gray-200 animate-pulse flex h-40"></div>
+                    <div key={id} className="bg-white rounded-2xl p-4 border border-gray-200/60 flex flex-col sm:flex-row gap-6 animate-pulse">
+                      <div className="w-full sm:w-52 h-40 bg-gray-200 rounded-xl flex-shrink-0"></div>
+                      <div className="flex-1 space-y-3 py-2">
+                        <div className="h-6 bg-gray-200 rounded w-1/3"></div>
+                        <div className="h-4 bg-gray-200 rounded w-2/3 mt-4"></div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               ) : filteredAds.length === 0 ? (
@@ -357,7 +375,7 @@ export default function HomePage() {
                         <div className="relative w-full sm:w-52 h-40 bg-gray-100 rounded-xl overflow-hidden flex-shrink-0 group">
                           <img src={adImages[currentImgIdx]} alt={ad.title} className="w-full h-full object-cover" />
                           
-                          {/* Top-Right embedded ad badge */}
+                          {/* Embedded Premium / Ultra status text badges */}
                           {ad.ad_type !== 'simple' && (
                             <div className={`absolute top-2 right-2 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md text-white shadow z-10 ${
                               ad.ad_type === 'ultra_premium' ? 'bg-gradient-to-r from-red-500 to-rose-600' : 'bg-gradient-to-r from-amber-500 to-amber-600'
@@ -411,10 +429,10 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* PREMIUM CONTACT MODAL POPUP */}
+      {/* CUSTOM FLOATING CONTACT MODAL POPUP (Replaces native alerts) */}
       {showContactPopup && (
-        <div className="fixed inset-0 bg-[#0A1128]/70 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-white max-w-sm w-full rounded-3xl p-6 md:p-8 shadow-2xl relative text-center border">
+        <div className="fixed inset-0 bg-[#0A1128]/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white max-w-sm w-full rounded-3xl p-6 md:p-8 shadow-2xl relative text-center border animate-in zoom-in-95">
             <button onClick={() => setShowContactPopup(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 font-bold text-sm">✕</button>
             <div className="w-16 h-16 bg-amber-500/10 text-amber-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-4">📞</div>
             <h3 className="text-xl font-black text-[#0A1128]">Contact Representative</h3>
@@ -431,7 +449,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Administrative Settings Modal */}
+      {/* Account Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-[#0A1128]/70 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="bg-white max-w-md w-full rounded-3xl p-6 md:p-8 shadow-2xl relative text-left">
@@ -496,7 +514,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 5. PREMIUM LUXURY DARK NAVY FOOTER */}
+      {/* 5. PREMIUM LUXURY DARK NAVY FOOTER WITH EARTH DEVELOPER'S BRANDING */}
       <footer className="bg-[#0A1128] border-t border-amber-500/20 text-white mt-20">
         <div className="max-w-7xl mx-auto px-4 py-12 md:px-8 grid grid-cols-1 md:grid-cols-3 gap-8">
           
@@ -532,7 +550,7 @@ export default function HomePage() {
 
         </div>
 
-        {/* Updated Copyright Bar with Earth Developer's Branding credit */}
+        {/* Dynamic Copyright Bar containing Earth Developer's Partnership node */}
         <div className="bg-[#070F2B] py-4 border-t border-slate-900 text-center text-[10px] font-bold text-gray-500 uppercase tracking-widest flex flex-col sm:flex-row justify-center items-center gap-1">
           <span>© {new Date().getFullYear()} Peninsula Commercial. All Rights Reserved.</span>
           <span className="text-amber-500 font-black sm:before:content-['|'] sm:before:mr-1 sm:before:text-gray-600">
