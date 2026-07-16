@@ -36,7 +36,6 @@ export async function POST(request) {
   try {
     const body = await request.json();
     
-    // Destructuring fields safely from admin layout payload
     const {
       title,
       price,
@@ -61,7 +60,6 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Required payload elements missing' }, { status: 400 });
     }
 
-    // Checking table attributes schema definitions dynamically
     const queryText = `
       INSERT INTO listings (
         title, 
@@ -88,23 +86,30 @@ export async function POST(request) {
       RETURNING *;
     `;
 
+    // Strict sanitization of variables to prevent query breaks
+    const parsedArea = area ? parseFloat(area) : 0;
+    const isShowOnHome = show_on_home === true;
+    const parsedBeds = beds ? parseInt(beds, 10) : null;
+    const parsedBaths = baths ? parseInt(baths, 10) : null;
+    const sanitizedAmenities = Array.isArray(amenities) ? amenities : [];
+
     const queryParams = [
       title,
-      price, // String input text value
+      price.toString(),
       location,
-      area, // Managed data integer mapping parsing values
+      parsedArea,
       area_unit || 'sq.yd',
       purpose || 'sale',
       main_category || 'plot',
       sub_category || 'plot',
-      'simple', // Default fallback structural classification
-      images || [], // Empty array payload if skipped on home
-      show_on_home === true, 
-      show_on_home ? commercial_zone : null,
+      'simple',
+      images || [],
+      isShowOnHome, 
+      isShowOnHome ? commercial_zone : null,
       description || '',
-      beds ? parseInt(beds) : null,
-      baths ? parseInt(baths) : null,
-      amenities || [], // Fallback formatting check syntax structures
+      isNaN(parsedBeds) ? null : parsedBeds,
+      isNaN(parsedBaths) ? null : parsedBaths,
+      sanitizedAmenities, 
       listing_type || 'property',
       'active'
     ];
@@ -113,12 +118,12 @@ export async function POST(request) {
 
     return NextResponse.json({ 
       success: true, 
-      message: '🎉 Entry submitted successfully without index drops!', 
+      message: '🎉 Entry submitted successfully!', 
       data: result.rows[0] 
     }, { status: 201 });
 
   } catch (err) {
-    console.error("Crash logs tracing dynamic error:", err);
-    return NextResponse.json({ error: 'Failed to insert operational listing data' }, { status: 500 });
+    console.error("Database insertion detailed stacktrace:", err);
+    return NextResponse.json({ error: 'Internal Server Error Database' }, { status: 500 });
   }
 }
