@@ -22,8 +22,8 @@ export default function PropertiesPage() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // Global Target Contact Config
-  const adminPhone = '923132099816';
-  const displayPhone = '03132099816';
+  const adminPhone = '03331234201';
+  const displayPhone = '03331234201';
 
   const fetchAllAds = async () => {
     try {

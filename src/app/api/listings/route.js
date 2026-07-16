@@ -147,19 +147,27 @@ export async function POST(request) {
 }
 
 // 🟢 3. DELETE: Secure listing deletion by ID
+// 3. DELETE: Soft delete or permanent wipe handler
 export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const permanent = searchParams.get('permanent') === 'true'; // Check if hard delete requested
 
     if (!id) {
       return NextResponse.json({ error: 'Listing ID is required' }, { status: 400 });
     }
 
-    // Direct database query run to delete from listings table
-    const queryText = 'DELETE FROM listings WHERE id = $1 RETURNING *;';
-    const result = await sql.query(queryText, [id]);
+    let queryText = '';
+    if (permanent) {
+      // 🔥 Hard Delete: Table se hamesha ke liye saaf
+      queryText = 'DELETE FROM listings WHERE id = $1 RETURNING *;';
+    } else {
+      // 📦 Soft Delete: Live site se gayb, Trash folder me shift
+      queryText = "UPDATE listings SET status = 'deleted', refreshed_at = NOW() WHERE id = $1 RETURNING *;";
+    }
 
+    const result = await sql.query(queryText, [id]);
     const returnedRows = result.rows || result;
     
     if (returnedRows.length === 0) {
@@ -168,14 +176,11 @@ export async function DELETE(request) {
 
     return NextResponse.json({ 
       success: true, 
-      message: '🗑️ Ad listing deleted successfully from database!' 
+      message: permanent ? '🔥 Permanently wiped from DB!' : '📦 Shifted to Trash Folder!' 
     }, { status: 200 });
 
   } catch (err) {
     console.error("Database delete error:", err);
-    return NextResponse.json({ 
-      error: 'Internal Server Error Database',
-      details: err.message || err 
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Internal Server Error Database', details: err.message || err }, { status: 500 });
   }
 }

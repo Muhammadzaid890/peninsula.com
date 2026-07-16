@@ -47,9 +47,9 @@ export default function HomePage() {
   const [adminConfig, setAdminConfig] = useState({
     name: '🔴 System Admin',
     email: 'admin@peninsula.com',
-    password: 'admin',
-    phone: '923132099816', 
-    displayPhone: '03132099816' 
+    password: 'admin@123',
+    phone: '03331234201', 
+    displayPhone: '03331234201' 
   });
 
   // Settings form input states
@@ -223,7 +223,7 @@ export default function HomePage() {
             </div>
             
             <div className="hidden md:flex space-x-6 text-xs uppercase tracking-widest font-bold text-gray-300">
-              <a href="/" className="text-amber-500 hover:text-amber-400">Home</a>
+              <a href="/" className=" hover:text-amber-400">Home</a>
               <a href="/properties" className="hover:text-amber-400">Properties</a>
               <button onClick={() => setShowContactPopup(true)} className="hover:text-amber-400 uppercase tracking-widest font-bold focus:outline-none">Contact</button>
             </div>
