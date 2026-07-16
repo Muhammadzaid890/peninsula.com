@@ -4,7 +4,6 @@ import { sql } from '@/lib/db';
 // Helper utility to safely serialize dates and nested arrays to JSON format
 function safeJSONSerialize(data) {
   return JSON.parse(JSON.stringify(data, (key, value) => {
-    // Convert Dates/Timestamps to ISO string format to bypass serialization crashes
     if (value instanceof Date) {
       return value.toISOString();
     }
@@ -36,7 +35,6 @@ export async function GET(request) {
 
     const result = await sql.query(queryText, queryParams);
     
-    // Safely extract rows from any driver response format
     const rows = result.rows || result;
     const serializedRows = safeJSONSerialize(rows);
 
@@ -71,7 +69,6 @@ export async function POST(request) {
       listing_type
     } = body;
 
-    // Strict parameter validation
     if (!title || !price || !location || !area) {
       return NextResponse.json({ error: 'Required payload elements missing' }, { status: 400 });
     }
@@ -131,7 +128,6 @@ export async function POST(request) {
 
     const result = await sql.query(queryText, queryParams);
 
-    // Dynamic row checker mapping to resolve "undefined reading 0" crashes safely
     const returnedRows = result.rows || result;
     const createdRecord = Array.isArray(returnedRows) && returnedRows.length > 0 ? returnedRows[0] : null;
 
@@ -143,6 +139,40 @@ export async function POST(request) {
 
   } catch (err) {
     console.error("Database insertion detailed stacktrace:", err);
+    return NextResponse.json({ 
+      error: 'Internal Server Error Database',
+      details: err.message || err 
+    }, { status: 500 });
+  }
+}
+
+// 🟢 3. DELETE: Secure listing deletion by ID
+export async function DELETE(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Listing ID is required' }, { status: 400 });
+    }
+
+    // Direct database query run to delete from listings table
+    const queryText = 'DELETE FROM listings WHERE id = $1 RETURNING *;';
+    const result = await sql.query(queryText, [id]);
+
+    const returnedRows = result.rows || result;
+    
+    if (returnedRows.length === 0) {
+      return NextResponse.json({ error: 'No listing found with this ID' }, { status: 404 });
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      message: '🗑️ Ad listing deleted successfully from database!' 
+    }, { status: 200 });
+
+  } catch (err) {
+    console.error("Database delete error:", err);
     return NextResponse.json({ 
       error: 'Internal Server Error Database',
       details: err.message || err 
