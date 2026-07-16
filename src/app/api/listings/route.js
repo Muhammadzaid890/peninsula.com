@@ -1,6 +1,17 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db'; 
 
+// Helper utility to safely serialize dates and nested arrays to JSON format
+function safeJSONSerialize(data) {
+  return JSON.parse(JSON.stringify(data, (key, value) => {
+    // Convert Dates/Timestamps to ISO string format to bypass serialization crashes
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    return value;
+  }));
+}
+
 // 1. GET: Fetch active listing payload
 export async function GET(request) {
   try {
@@ -24,7 +35,12 @@ export async function GET(request) {
     queryText += ' ORDER BY refreshed_at DESC';
 
     const result = await sql.query(queryText, queryParams);
-    return NextResponse.json(result.rows, { status: 200 });
+    
+    // Safely extract rows from any driver response format
+    const rows = result.rows || result;
+    const serializedRows = safeJSONSerialize(rows);
+
+    return NextResponse.json(serializedRows, { status: 200 });
   } catch (err) {
     console.error("Database read error:", err);
     return NextResponse.json({ error: 'Internal Server Error Database' }, { status: 500 });
@@ -55,7 +71,7 @@ export async function POST(request) {
       listing_type
     } = body;
 
-    // Strict parameter checking 
+    // Strict parameter validation
     if (!title || !price || !location || !area) {
       return NextResponse.json({ error: 'Required payload elements missing' }, { status: 400 });
     }
@@ -86,7 +102,6 @@ export async function POST(request) {
       RETURNING *;
     `;
 
-    // Strict sanitization of variables to prevent query breaks
     const parsedArea = area ? parseFloat(area) : 0;
     const isShowOnHome = show_on_home === true;
     const parsedBeds = beds ? parseInt(beds, 10) : null;
@@ -116,14 +131,21 @@ export async function POST(request) {
 
     const result = await sql.query(queryText, queryParams);
 
+    // Dynamic row checker mapping to resolve "undefined reading 0" crashes safely
+    const returnedRows = result.rows || result;
+    const createdRecord = Array.isArray(returnedRows) && returnedRows.length > 0 ? returnedRows[0] : null;
+
     return NextResponse.json({ 
       success: true, 
       message: '🎉 Entry submitted successfully!', 
-      data: result.rows[0] 
+      data: safeJSONSerialize(createdRecord)
     }, { status: 201 });
 
   } catch (err) {
     console.error("Database insertion detailed stacktrace:", err);
-    return NextResponse.json({ error: 'Internal Server Error Database' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Internal Server Error Database',
+      details: err.message || err 
+    }, { status: 500 });
   }
 }
