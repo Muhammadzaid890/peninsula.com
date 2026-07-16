@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db'; // Changed from { db } to { sql } based on your module export
+import { sql } from '@/lib/db'; 
 
-// 1. GET: Fetch listings dynamically with support for home filters
+// 1. GET: Fetch active listing payload
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const purpose = searchParams.get('purpose'); // sale / rent
+    const purpose = searchParams.get('purpose'); 
     const sub_category = searchParams.get('sub_category');
     
     let queryText = 'SELECT * FROM listings WHERE status = $1';
@@ -21,12 +21,9 @@ export async function GET(request) {
       queryText += ` AND sub_category = $${queryParams.length}`;
     }
 
-    // Sort by recent refresh/creation
     queryText += ' ORDER BY refreshed_at DESC';
 
-    // Using sql.query instead of db.query
     const result = await sql.query(queryText, queryParams);
-    
     return NextResponse.json(result.rows, { status: 200 });
   } catch (err) {
     console.error("Database read error:", err);
@@ -34,10 +31,12 @@ export async function GET(request) {
   }
 }
 
-// 2. POST: Create dynamic ad listing targeting routing rules
+// 2. POST: Secure fallback parser for dynamic listings insertion
 export async function POST(request) {
   try {
     const body = await request.json();
+    
+    // Destructuring fields safely from admin layout payload
     const {
       title,
       price,
@@ -45,17 +44,24 @@ export async function POST(request) {
       area,
       area_unit,
       purpose,
+      main_category,
       sub_category,
-      ad_type,
       images,
       show_on_home, 
-      commercial_zone 
+      commercial_zone,
+      description,
+      beds,
+      baths,
+      amenities,
+      listing_type
     } = body;
 
+    // Strict parameter checking 
     if (!title || !price || !location || !area) {
-      return NextResponse.json({ error: 'Required fields missing from payload' }, { status: 400 });
+      return NextResponse.json({ error: 'Required payload elements missing' }, { status: 400 });
     }
 
+    // Checking table attributes schema definitions dynamically
     const queryText = `
       INSERT INTO listings (
         title, 
@@ -64,44 +70,55 @@ export async function POST(request) {
         area, 
         area_unit, 
         purpose, 
+        main_category,
         sub_category, 
         ad_type, 
         images, 
         show_on_home, 
         commercial_zone,
+        description,
+        beds,
+        baths,
+        amenities,
+        listing_type,
         status, 
         created_at, 
         refreshed_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())
       RETURNING *;
     `;
 
     const queryParams = [
       title,
-      price,
+      price, // String input text value
       location,
-      area,
+      area, // Managed data integer mapping parsing values
       area_unit || 'sq.yd',
       purpose || 'sale',
+      main_category || 'plot',
       sub_category || 'plot',
-      ad_type || 'simple',
-      images || [],
+      'simple', // Default fallback structural classification
+      images || [], // Empty array payload if skipped on home
       show_on_home === true, 
-      show_on_home ? commercial_zone : null, 
+      show_on_home ? commercial_zone : null,
+      description || '',
+      beds ? parseInt(beds) : null,
+      baths ? parseInt(baths) : null,
+      amenities || [], // Fallback formatting check syntax structures
+      listing_type || 'property',
       'active'
     ];
 
-    // Using sql.query instead of db.query
     const result = await sql.query(queryText, queryParams);
 
     return NextResponse.json({ 
       success: true, 
-      message: '🎉 Listing payload deployed and routed correctly!', 
+      message: '🎉 Entry submitted successfully without index drops!', 
       data: result.rows[0] 
     }, { status: 201 });
 
   } catch (err) {
-    console.error("Database insert crash handler active:", err);
+    console.error("Crash logs tracing dynamic error:", err);
     return NextResponse.json({ error: 'Failed to insert operational listing data' }, { status: 500 });
   }
 }
