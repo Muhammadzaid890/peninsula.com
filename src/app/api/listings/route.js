@@ -1,80 +1,107 @@
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { sql } from '@/lib/db'; // Changed from { db } to { sql } based on your module export
 
-// 1. CREATE AD / PROJECT
+// 1. GET: Fetch listings dynamically with support for home filters
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const purpose = searchParams.get('purpose'); // sale / rent
+    const sub_category = searchParams.get('sub_category');
+    
+    let queryText = 'SELECT * FROM listings WHERE status = $1';
+    let queryParams = ['active'];
+
+    if (purpose) {
+      queryParams.push(purpose);
+      queryText += ` AND purpose = $${queryParams.length}`;
+    }
+
+    if (sub_category) {
+      queryParams.push(sub_category);
+      queryText += ` AND sub_category = $${queryParams.length}`;
+    }
+
+    // Sort by recent refresh/creation
+    queryText += ' ORDER BY refreshed_at DESC';
+
+    // Using sql.query instead of db.query
+    const result = await sql.query(queryText, queryParams);
+    
+    return NextResponse.json(result.rows, { status: 200 });
+  } catch (err) {
+    console.error("Database read error:", err);
+    return NextResponse.json({ error: 'Internal Server Error Database' }, { status: 500 });
+  }
+}
+
+// 2. POST: Create dynamic ad listing targeting routing rules
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { 
-      title, price, location, description, purpose, main_category, sub_category, 
-      images, area, area_unit, beds, baths, amenities, listing_type
+    const {
+      title,
+      price,
+      location,
+      area,
+      area_unit,
+      purpose,
+      sub_category,
+      ad_type,
+      images,
+      show_on_home, 
+      commercial_zone 
     } = body;
 
-    const result = await sql`
+    if (!title || !price || !location || !area) {
+      return NextResponse.json({ error: 'Required fields missing from payload' }, { status: 400 });
+    }
+
+    const queryText = `
       INSERT INTO listings (
-        title, price, location, description, purpose, 
-        main_category, sub_category, images, area, 
-        area_unit, beds, baths, amenities, listing_type
-      )
-      VALUES (
-        ${title}, ${price}, ${location}, ${description}, ${purpose}, 
-        ${main_category}, ${sub_category}, ${images}, ${area}, 
-        ${area_unit}, ${beds}, ${baths}, ${amenities}, ${listing_type || 'property'}
-      )
-      RETURNING id;
+        title, 
+        price, 
+        location, 
+        area, 
+        area_unit, 
+        purpose, 
+        sub_category, 
+        ad_type, 
+        images, 
+        show_on_home, 
+        commercial_zone,
+        status, 
+        created_at, 
+        refreshed_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+      RETURNING *;
     `;
 
-    return NextResponse.json({ success: true, id: result[0].id }, { status: 201 });
-  } catch (error) {
-    console.error("Database Insert Error:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-  }
-}
+    const queryParams = [
+      title,
+      price,
+      location,
+      area,
+      area_unit || 'sq.yd',
+      purpose || 'sale',
+      sub_category || 'plot',
+      ad_type || 'simple',
+      images || [],
+      show_on_home === true, 
+      show_on_home ? commercial_zone : null, 
+      'active'
+    ];
 
-// 2. GET ACTIVE ADS & PROJECTS
-export async function GET() {
-  try {
-    const data = await sql`
-      SELECT * FROM listings 
-      WHERE is_deleted = FALSE
-      ORDER BY refreshed_at DESC
-    `;
-    return NextResponse.json(data, { status: 200 });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-  }
-}
+    // Using sql.query instead of db.query
+    const result = await sql.query(queryText, queryParams);
 
-// 3. UPDATE AD
-export async function PUT(request) {
-  try {
-    const body = await request.json();
-    const { 
-      id, title, price, location, description, purpose, 
-      main_category, sub_category, area, area_unit, beds, baths, amenities, listing_type 
-    } = body;
+    return NextResponse.json({ 
+      success: true, 
+      message: '🎉 Listing payload deployed and routed correctly!', 
+      data: result.rows[0] 
+    }, { status: 201 });
 
-    await sql`
-      UPDATE listings 
-      SET 
-        title = ${title},
-        price = ${price},
-        location = ${location},
-        description = ${description},
-        purpose = ${purpose},
-        main_category = ${main_category},
-        sub_category = ${sub_category},
-        area = ${area},
-        area_unit = ${area_unit},
-        beds = ${beds},
-        baths = ${baths},
-        amenities = ${amenities},
-        listing_type = ${listing_type}
-      WHERE id = ${id}
-    `;
-
-    return NextResponse.json({ success: true }, { status: 200 });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (err) {
+    console.error("Database insert crash handler active:", err);
+    return NextResponse.json({ error: 'Failed to insert operational listing data' }, { status: 500 });
   }
 }

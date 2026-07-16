@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 const categoryMapping = {
   home: ['house', 'flat', 'portion'],
@@ -13,12 +14,17 @@ const amenityOptions = [
 ];
 
 export default function AddAdPage() {
+  const router = useRouter();
   const [listingType, setListingType] = useState('property'); // 'property' or 'project'
   const [mainCat, setMainCat] = useState('home');
   const [subCat, setSubCat] = useState('house');
   const [selectedAmenities, setSelectedAmenities] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 🟢 Accordion Placement States
+  const [showOnHome, setShowOnHome] = useState(false);
+  const [commercialZone, setCommercialZone] = useState('business_zone');
 
   const handleAmenityChange = (amenity) => {
     if (selectedAmenities.includes(amenity)) {
@@ -37,7 +43,7 @@ export default function AddAdPage() {
 
     let uploadedImageUrls = [];
 
-    // 1. Upload Images via Cloudinary Route
+    // 1. Upload Images to Cloudinary if selected
     if (imageFiles && imageFiles.length > 0 && imageFiles[0].size > 0) {
       setUploading(true);
       try {
@@ -65,7 +71,7 @@ export default function AddAdPage() {
       setUploading(false);
     }
 
-    // 2. Build Payload Structure with listing_type
+    // 2. Build Payload matching the updated listings route
     const adData = {
       title: formData.get('title'),
       price: formData.get('price'),
@@ -80,7 +86,9 @@ export default function AddAdPage() {
       beds: mainCat === 'home' ? formData.get('beds') : null,
       baths: mainCat === 'home' ? formData.get('baths') : null,
       amenities: selectedAmenities,
-      listing_type: listingType // 'property' or 'project'
+      listing_type: listingType,
+      show_on_home: showOnHome, // Sent to backend boolean field
+      commercial_zone: showOnHome ? commercialZone : null // Target accordion bar mapping
     };
 
     try {
@@ -96,6 +104,10 @@ export default function AddAdPage() {
         e.target.reset();
         setSelectedAmenities([]);
         setListingType('property');
+        setShowOnHome(false);
+        
+        // Redirect based on routing selection
+        router.push(showOnHome ? '/' : '/properties');
       } else {
         alert(`❌ Error: ${result.error}`);
       }
@@ -108,6 +120,23 @@ export default function AddAdPage() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-[#0F172A] font-sans py-12 px-4">
+      
+      {/* 🟢 TOP NAVIGATION BUTTONS (BACK ANCHORS) */}
+      <div className="max-w-3xl mx-auto mb-6 flex flex-wrap gap-4">
+        <button 
+          onClick={() => router.push('/admin')}
+          className="flex items-center space-x-2 text-xs font-black uppercase tracking-wider text-[#0A1128] hover:text-amber-600 bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200 transition-colors focus:outline-none"
+        >
+          <span>⬅</span> <span>Back to Admin Dashboard</span>
+        </button>
+        <button 
+          onClick={() => router.push('/')}
+          className="flex items-center space-x-2 text-xs font-black uppercase tracking-wider text-[#0A1128] hover:text-amber-600 bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200 transition-colors focus:outline-none"
+        >
+          <span>🏠</span> <span>Back to Home</span>
+        </button>
+      </div>
+
       <div className="max-w-3xl mx-auto bg-white border border-gray-200/80 rounded-3xl overflow-hidden shadow-2xl">
         
         {/* Navy Blue Header Panel matching the brand */}
@@ -151,11 +180,6 @@ export default function AddAdPage() {
                 🏗️ New Project / Booking Scheme
               </button>
             </div>
-            <p className="text-[11px] text-gray-400 mt-2 font-medium">
-              {listingType === 'project' 
-                ? '💡 Info: Yeh entry automatic Home Page ke "Newly Flats Booking" aur "New Projects" sidebar sections mein render hogi.' 
-                : '💡 Info: Yeh entry home feed aur properties tab ke main feeds par standard responsive card layout par chalegi.'}
-            </p>
           </div>
 
           {/* Title */}
@@ -231,6 +255,41 @@ export default function AddAdPage() {
             </div>
           </div>
 
+          {/* 🟢 DYNAMIC GATEWAY: SHOW ON ACCORDION TARGETING BAR */}
+          <div className="p-4 bg-amber-500/5 rounded-2xl border-2 border-dashed border-amber-500/20 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-xs uppercase text-[#0A1128] font-black">Show on Home Page Accordion List?</label>
+                <span className="text-[10px] text-gray-400 block lowercase font-normal mt-0.5">If yes, this listing will render inside the text matrix lists on home.</span>
+              </div>
+              <input 
+                type="checkbox" 
+                checked={showOnHome} 
+                onChange={(e) => setShowOnHome(e.target.checked)} 
+                className="w-5 h-5 accent-[#0A1128] cursor-pointer"
+              />
+            </div>
+
+            {showOnHome && (
+              <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                <label className="block text-[11px] uppercase mb-1 text-amber-700 font-black">Select Target Commercial Accordion Bar:</label>
+                <select 
+                  value={commercialZone} 
+                  onChange={(e) => setCommercialZone(e.target.value)}
+                  className="w-full p-3 bg-white border border-amber-300 rounded-xl text-slate-900 font-black focus:outline-none text-xs"
+                >
+                  <option value="business_zone">BUSINESS ZONE COM</option>
+                  <option value="beach_avenue">BEACH AVENUE COM</option>
+                  <option value="sahil_com">SAHIL COMMERCIAL</option>
+                  <option value="zulfiqar_com">ZULFIQAR COM</option>
+                  <option value="al_murtaza">AL MURTAZA COM</option>
+                  <option value="peninsula_com">PENINSULA COM</option>
+                  <option value="dha_plot_com">DHA PLOT COMMERCIAL</option>
+                </select>
+              </div>
+            )}
+          </div>
+
           {/* Specifications */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -244,8 +303,8 @@ export default function AddAdPage() {
                   className="w-2/3 px-4 py-3 bg-slate-50 border border-gray-200 rounded-l-xl font-semibold text-sm focus:outline-none"
                 />
                 <select name="area_unit" className="w-1/3 px-2 py-3 bg-slate-100 border-y border-r border-gray-200 rounded-r-xl font-bold text-xs">
-                  <option value="Sq. Yd">Sq. Yd</option>
-                  <option value="Sq. Ft">Sq. Ft</option>
+                  <option value="sq.yd">Sq. Yd</option>
+                  <option value="sq.ft">Sq. Ft</option>
                 </select>
               </div>
             </div>

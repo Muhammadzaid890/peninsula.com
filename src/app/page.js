@@ -9,6 +9,17 @@ const dhaAreas = [
   'DHA Phase 8 Extension', 'Sahil Commercial', 'Al Murtaza Commercial', 'Bukhari Commercial', 'Shahbaz Commercial', 'Badar Commercial'
 ];
 
+// Defined Accordion Zones Matching Database Mapping Properties
+const commercialZones = [
+  { id: 'business_zone', name: 'BUSINESS ZONE COM' },
+  { id: 'beach_avenue', name: 'BEACH AVENUE COM' },
+  { id: 'sahil_com', name: 'SAHIL COMMERCIAL' },
+  { id: 'zulfiqar_com', name: 'ZULFIQAR COM' },
+  { id: 'al_murtaza', name: 'AL MURTAZA COM' },
+  { id: 'peninsula_com', name: 'PENINSULA COM' },
+  { id: 'dha_plot_com', name: 'DHA PLOT COMMERCIAL' },
+];
+
 export default function HomePage() {
   const [ads, setAds] = useState([]);
   const [filteredAds, setFilteredAds] = useState([]);
@@ -17,6 +28,9 @@ export default function HomePage() {
   // Search states
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Accordion Expand Toggle State
+  const [openZone, setOpenZone] = useState(null);
 
   // Authentication states
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -29,7 +43,7 @@ export default function HomePage() {
   // Contact Popup State
   const [showContactPopup, setShowContactPopup] = useState(false);
 
-  // Admin Operational Config Profile (Default values linked to your exact primary phone parameters)
+  // Admin Operational Config Profile
   const [adminConfig, setAdminConfig] = useState({
     name: '🔴 System Admin',
     email: 'admin@peninsula.com',
@@ -48,12 +62,6 @@ export default function HomePage() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
-  // Detail Modal States
-  const [selectedAd, setSelectedAd] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeImageIndices, setActiveImageIndices] = useState({});
-  const [modalImageIdx, setModalImageIdx] = useState(0);
-
   // Toast State
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
@@ -70,19 +78,8 @@ export default function HomePage() {
       const res = await fetch('/api/listings');
       const data = await res.json();
       if (Array.isArray(data)) {
-        // FILTER: Keep ONLY Premium or Ultra Premium listings for Home page
-        const premiumOnly = data.filter(ad => ad.ad_type === 'ultra_premium' || ad.ad_type === 'premium');
-
-        // Sort: Ultra Premium -> Premium
-        const sorted = [...premiumOnly].sort((a, b) => {
-          const priority = { ultra_premium: 3, premium: 2 };
-          const pA = priority[a.ad_type] || 2;
-          const pB = priority[b.ad_type] || 2;
-          if (pB !== pA) return pB - pA;
-          return new Date(b.refreshed_at) - new Date(a.refreshed_at);
-        });
-        setAds(sorted);
-        setFilteredAds(sorted); 
+        setAds(data);
+        setFilteredAds(data); 
       }
     } catch (err) {
       console.error("Error fetching ads:", err);
@@ -117,9 +114,7 @@ export default function HomePage() {
         return (
           ad.title?.toLowerCase().includes(query) ||
           ad.location?.toLowerCase().includes(query) ||
-          ad.sub_category?.toLowerCase().includes(query) ||
-          ad.main_category?.toLowerCase().includes(query) ||
-          ad.purpose?.toLowerCase().includes(query)
+          ad.sub_category?.toLowerCase().includes(query)
         );
       });
       setFilteredAds(filtered);
@@ -191,25 +186,20 @@ export default function HomePage() {
     setShowAuthDropdown(false);
   };
 
-  // Image sliders logic
-  const nextImage = (adId, imagesLength) => {
-    setActiveImageIndices(prev => ({ ...prev, [adId]: ((prev[adId] || 0) + 1) % imagesLength }));
-  };
-  const prevImage = (adId, imagesLength) => {
-    setActiveImageIndices(prev => ({ ...prev, [adId]: ((prev[adId] || 0) - 1 + imagesLength) % imagesLength }));
-  };
-  const nextModalImage = (imagesLength) => { setModalImageIdx(prev => (prev + 1) % imagesLength); };
-  const prevModalImage = (imagesLength) => { setModalImageIdx(prev => (prev - 1 + imagesLength) % imagesLength); };
-
-  const handleViewAd = (ad) => {
-    setSelectedAd(ad);
-    setModalImageIdx(0); 
-    setIsModalOpen(true);
-  };
-
   const handleSelectArea = (area) => {
     setSearchQuery(area);
     setShowSuggestions(false); 
+  };
+
+  const toggleZone = (zoneId) => {
+    setOpenZone(openZone === zoneId ? null : zoneId);
+  };
+
+  // Explicitly gets listings that are tagged for homepage under the corresponding zone ID
+  const getZoneListings = (zoneId) => {
+    return filteredAds.filter(ad => {
+      return ad.show_on_home === true && ad.commercial_zone === zoneId;
+    });
   };
 
   return (
@@ -227,7 +217,7 @@ export default function HomePage() {
         <nav className="bg-[#0A1128] border-b border-amber-500/20 sticky top-0 z-40 shadow-md">
           <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between relative">
             <div className="flex items-center space-x-3">
-              <span className="text-lg md:text-xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-500">
+              <span className="text-xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-500">
                 <a href="/">PENINSULA COMMERCIAL</a>
               </span>
             </div>
@@ -235,7 +225,6 @@ export default function HomePage() {
             <div className="hidden md:flex space-x-6 text-xs uppercase tracking-widest font-bold text-gray-300">
               <a href="/" className="text-amber-500 hover:text-amber-400">Home</a>
               <a href="/properties" className="hover:text-amber-400">Properties</a>
-              <a href="/#projects" className="hover:text-amber-400">New Projects</a>
               <button onClick={() => setShowContactPopup(true)} className="hover:text-amber-400 uppercase tracking-widest font-bold focus:outline-none">Contact</button>
             </div>
 
@@ -294,7 +283,6 @@ export default function HomePage() {
             <div className="absolute top-16 left-0 right-0 bg-[#0A1128] p-4 flex flex-col space-y-3 z-50 text-center md:hidden border-b border-amber-500/20" onClick={(e) => e.stopPropagation()}>
               <a href="/" onClick={() => setShowMobileMenu(false)} className="text-amber-500 font-bold text-sm py-1 border-b border-slate-800/60">Home</a>
               <a href="/properties" onClick={() => setShowMobileMenu(false)} className="text-gray-300 font-bold text-sm py-1 border-b border-slate-800/60 hover:text-amber-400">Properties</a>
-              <a href="/#projects" onClick={() => setShowMobileMenu(false)} className="text-gray-300 font-bold text-sm py-1 hover:text-amber-400">New Projects</a>
               <button onClick={() => { setShowContactPopup(true); setShowMobileMenu(false); }} className="text-gray-300 font-bold text-sm py-2 hover:text-amber-400 block w-full text-center">Contact</button>
             </div>
           )}
@@ -304,8 +292,8 @@ export default function HomePage() {
         <section className="bg-gradient-to-b from-[#0A1128] to-[#1E293B] text-white py-16 px-4 text-center border-b border-amber-500/10 relative overflow-visible">
           <div className="max-w-3xl mx-auto relative z-20">
             <span className="text-xs uppercase tracking-widest text-amber-500 font-extrabold px-3 py-1 bg-amber-500/10 rounded-full">Interactive Portal</span>
-            <h1 className="text-3xl md:text-5xl font-black mt-3 tracking-tight">Exclusive Premium Listings</h1>
-            <p className="text-gray-300 text-xs md:text-sm mt-3 max-w-xl mx-auto">Viewing featured and ultra priority investment segments across DHA Karachi.</p>
+            <h1 className="text-3xl md:text-5xl font-black mt-3 tracking-tight">DHA Commercial Plot Matrix</h1>
+            <p className="text-gray-300 text-xs md:text-sm mt-3 max-w-xl mx-auto">Instant search filters across major business commercial zones of DHA Karachi.</p>
 
             <div className="mt-8 max-w-2xl mx-auto relative" onClick={(e) => e.stopPropagation()}>
               <div className="bg-white p-2 rounded-2xl shadow-xl flex items-center border-2 border-amber-500/30">
@@ -342,97 +330,111 @@ export default function HomePage() {
         {showAuthDropdown && <div className="fixed inset-0 z-10" onClick={() => setShowAuthDropdown(false)}></div>}
         {showMobileMenu && <div className="fixed inset-0 z-10" onClick={() => setShowMobileMenu(false)}></div>}
 
-        {/* 3. MAIN LISTINGS AREA */}
-        <div className="max-w-7xl mx-auto px-4 py-12 md:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            
-            <div className="lg:col-span-8 space-y-6">
-              <h2 className="text-lg font-black uppercase tracking-wider text-[#0A1128] border-b pb-3">👑 Featured Properties For You</h2>
+        {/* 3. COMMERCIAL ACCORDION LIST VIEW AREA */}
+        <div className="max-w-7xl mx-auto px-4 py-12 md:px-8 space-y-4">
+          
+          {loading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((skeletonId) => (
+                <div key={skeletonId} className="h-16 bg-[#0A1128]/50 border border-slate-800 rounded-xl animate-pulse"></div>
+              ))}
+            </div>
+          ) : (
+            commercialZones.map((zone) => {
+              const zoneListings = getZoneListings(zone.id);
+              const isOpen = openZone === zone.id;
 
-              {/* SKELETON FEED FOR LOADING / OFFLINE DELAY */}
-              {loading ? (
-                <div className="space-y-6">
-                  {[1, 2].map((id) => (
-                    <div key={id} className="bg-white rounded-2xl p-4 border border-gray-200/60 flex flex-col sm:flex-row gap-6 animate-pulse">
-                      <div className="w-full sm:w-52 h-40 bg-gray-200 rounded-xl flex-shrink-0"></div>
-                      <div className="flex-1 space-y-3 py-2">
-                        <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-                        <div className="h-4 bg-gray-200 rounded w-2/3 mt-4"></div>
-                      </div>
+              return (
+                <div key={zone.id} className="rounded-xl overflow-hidden shadow-sm border border-slate-800 bg-[#0A1128] text-white">
+                  
+                  {/* Accordion Zone Header Bar */}
+                  <button 
+                    onClick={() => toggleZone(zone.id)}
+                    className="w-full p-4 flex justify-between items-center text-left hover:bg-slate-900/60 transition-all focus:outline-none"
+                  >
+                    <div className="flex items-center space-x-6">
+                      <span className="text-xs font-bold tracking-wider bg-black/40 px-3 py-1.5 rounded-md min-w-[85px] text-center border border-slate-700">
+                        {zoneListings.length} listings
+                      </span>
+                      <h3 className="text-sm md:text-base font-black tracking-widest uppercase text-slate-100">{zone.name}</h3>
                     </div>
-                  ))}
-                </div>
-              ) : filteredAds.length === 0 ? (
-                <div className="text-center py-20 text-gray-500 border-2 border-dashed border-gray-300 rounded-3xl bg-white p-6">No premium matching assets found.</div>
-              ) : (
-                <div className="space-y-6">
-                  {filteredAds.map((ad) => {
-                    const adImages = ad.images && ad.images.length > 0 ? ad.images : ['https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80'];
-                    const currentImgIdx = activeImageIndices[ad.id] || 0;
+                    <span className={`text-sm transform transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
+                      ▼
+                    </span>
+                  </button>
 
-                    return (
-                      <div key={ad.id} className="bg-white rounded-2xl overflow-hidden border p-4 flex flex-col sm:flex-row gap-6 relative border-amber-500/30 bg-amber-500/[0.01]">
-                        <div className="relative w-full sm:w-52 h-40 bg-gray-100 rounded-xl overflow-hidden flex-shrink-0 group">
-                          <img src={adImages[currentImgIdx]} alt={ad.title} className="w-full h-full object-cover" />
-                          
-                          {/* Embedded Premium / Ultra status text badges */}
-                          {ad.ad_type !== 'simple' && (
-                            <div className={`absolute top-2 right-2 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md text-white shadow z-10 ${
-                              ad.ad_type === 'ultra_premium' ? 'bg-gradient-to-r from-red-500 to-rose-600' : 'bg-gradient-to-r from-amber-500 to-amber-600'
-                            }`}>
-                              {ad.ad_type === 'ultra_premium' ? 'Ultra' : 'Premium'}
-                            </div>
-                          )}
-
-                          <div className="absolute top-2 left-2 bg-[#009640] text-white text-xs font-bold w-7 h-7 rounded-full flex items-center justify-center">{adImages.length}</div>
-                          {adImages.length > 1 && (
-                            <>
-                              <button onClick={(e) => { e.stopPropagation(); prevImage(ad.id, adImages.length); }} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 text-white w-5 h-5 rounded-full text-xs">❮</button>
-                              <button onClick={(e) => { e.stopPropagation(); nextImage(ad.id, adImages.length); }} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 text-white w-5 h-5 rounded-full text-xs">❯</button>
-                            </>
-                          )}
-                          <span className="absolute bottom-2 left-2 bg-[#0A1128] text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded shadow">For {ad.purpose}</span>
+                  {/* Dropdown Container Area */}
+                  {isOpen && (
+                    <div className="bg-white text-slate-900 border-t border-slate-800 overflow-x-auto animate-in slide-in-from-top-2 duration-200">
+                      {zoneListings.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-gray-400 font-bold bg-slate-50">
+                          No commercial active items currently updated in this partition.
                         </div>
+                      ) : (
+                        <table className="w-full text-left border-collapse text-xs font-semibold min-w-[800px]">
+                          <thead>
+                            <tr className="bg-slate-100 text-gray-500 border-b border-gray-200 uppercase tracking-wider text-[10px]">
+                              <th className="p-3 w-16 text-center">#</th>
+                              <th className="p-3 w-2/5">Description</th>
+                              <th className="p-3">Size</th>
+                              <th className="p-3">Floor</th>
+                              <th className="p-3">Phase</th>
+                              <th className="p-3">Features</th>
+                              <th className="p-3">Price / Sq.Yd</th>
+                              <th className="p-3">Agent Anchor</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 bg-white font-medium text-gray-700">
+                            {zoneListings.map((ad, idx) => (
+                              <tr key={ad.id} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="p-3 text-center text-gray-400 font-bold">#{70 + idx}</td>
+                                <td className="p-3">
+                                  <div className="font-black text-slate-900 text-sm">{ad.title}</div>
+                                  <div className="text-gray-400 text-[11px] mt-0.5">{ad.location || 'Lane Address Specified'}</div>
+                                </td>
+                                <td className="p-3">
+                                  <span className="bg-slate-100 text-slate-800 px-2.5 py-1 rounded-md font-bold text-[11px] border">
+                                    {ad.area} {ad.area_unit || 'sq.yd'}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-gray-400">—</td>
+                                <td className="p-3">
+                                  <span className="bg-blue-50 text-blue-700 font-bold px-2.5 py-1 rounded-md border border-blue-100">
+                                    {ad.location?.split(',')[0] || 'DHA'}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-gray-400">—</td>
+                                <td className="p-3 font-bold text-slate-900">Rs {ad.price}</td>
+                                <td className="p-3">
+                                  <div className="font-bold text-slate-900">Peninsula Support</div>
+                                  <a 
+                                    href={`https://wa.me/${adminConfig.phone}?text=Assalam-o-Alaikum, I am inquiring about Commercial Listing ID: #${70 + idx}`}
+                                    target="_blank"
+                                    className="text-emerald-600 font-bold flex items-center gap-1 mt-0.5 hover:underline"
+                                  >
+                                    🟢 {adminConfig.displayPhone}
+                                  </a>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
 
-                        <div className="flex-1 flex flex-col justify-between">
-                          <div>
-                            <span className="text-xl font-black text-[#006F70]">Rs {ad.price}</span>
-                            <h3 className="text-sm font-black text-[#0A1128] mt-1">{ad.title}</h3>
-                            <p className="text-xs text-gray-500 mt-1">📍 {ad.location}</p>
-                          </div>
-                          <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-3">
-                            <span className="text-xs text-gray-400 font-semibold uppercase">ID: 544{ad.id}</span>
-                            <div className="flex gap-2">
-                              <button onClick={() => handleViewAd(ad)} className="px-3 py-1.5 bg-[#0A1128] text-white text-[11px] font-extrabold rounded-lg uppercase">Details</button>
-                              <a href={`tel:+${adminConfig.phone}`} className="px-3 py-1.5 bg-slate-100 text-[#0A1128] border text-[11px] font-extrabold rounded-lg uppercase">Call</a>
-                              <a href={`https://wa.me/${adminConfig.phone}?text=Assalam-o-Alaikum, I am interested in property ID: 544${ad.id}.`} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-[#25D366] text-white text-[11px] font-extrabold rounded-lg uppercase flex items-center gap-1">WhatsApp</a>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
-              )}
-            </div>
+              );
+            })
+          )}
 
-            {/* Sidebar widgets */}
-            <div className="lg:col-span-4 space-y-8" id="projects">
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <span className="text-[10px] bg-red-100 text-red-600 font-bold px-2 py-1 rounded-md uppercase tracking-wider">Hot Deals</span>
-                <h3 className="text-lg font-black text-[#0A1128] mt-2 mb-4">Newly Flats Booking</h3>
-                <a href="/properties" className="block text-center w-full mt-4 py-2 bg-slate-100 text-[#0A1128] text-xs font-bold rounded-lg transition-colors hover:bg-slate-200">View All Properties</a>
-              </div>
-            </div>
-
-          </div>
         </div>
       </div>
 
-      {/* CUSTOM FLOATING CONTACT MODAL POPUP (Replaces native alerts) */}
+      {/* 4. PREMIUM COMPACT CONTACT MODAL POPUP */}
       {showContactPopup && (
-        <div className="fixed inset-0 bg-[#0A1128]/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white max-w-sm w-full rounded-3xl p-6 md:p-8 shadow-2xl relative text-center border animate-in zoom-in-95">
+        <div className="fixed inset-0 bg-[#0A1128]/70 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="bg-white max-w-sm w-full rounded-3xl p-6 md:p-8 shadow-2xl relative text-center border">
             <button onClick={() => setShowContactPopup(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 font-bold text-sm">✕</button>
             <div className="w-16 h-16 bg-amber-500/10 text-amber-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-4">📞</div>
             <h3 className="text-xl font-black text-[#0A1128]">Contact Representative</h3>
@@ -449,7 +451,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Account Settings Modal */}
+      {/* Administrative Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-[#0A1128]/70 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="bg-white max-w-md w-full rounded-3xl p-6 md:p-8 shadow-2xl relative text-left">
@@ -481,39 +483,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Detailed View Modal */}
-      {isModalOpen && selectedAd && (
-        <div className="fixed inset-0 bg-[#0A1128]/70 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-white max-w-2xl w-full rounded-3xl overflow-hidden shadow-2xl relative max-h-[92vh] overflow-y-auto">
-            <button onClick={() => setIsModalOpen(false)} className="absolute top-4 right-4 z-10 bg-black/60 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">✕</button>
-            <div>
-              {(() => {
-                const modalImages = selectedAd.images && selectedAd.images.length > 0 ? selectedAd.images : ['https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1200&q=80'];
-                return (
-                  <div className="h-72 md:h-80 w-full bg-gray-100 relative">
-                    <img src={modalImages[modalImageIdx]} alt={selectedAd.title} className="w-full h-full object-cover" />
-                    {modalImages.length > 1 && (
-                      <>
-                        <button onClick={() => prevModalImage(modalImages.length)} className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 text-white w-8 h-8 rounded-full flex items-center justify-center">❮</button>
-                        <button onClick={() => nextModalImage(modalImages.length)} className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 text-white w-8 h-8 rounded-full flex items-center justify-center">❯</button>
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
-              <div className="p-6 md:p-8">
-                <h2 className="text-2xl font-black text-[#0A1128]">{selectedAd.title}</h2>
-                <p className="text-2xl font-black text-[#006F70] mt-1">Rs {selectedAd.price}</p>
-                <div className="flex flex-col sm:flex-row gap-3 mt-6">
-                  <a href={`tel:+${adminConfig.phone}`} className="flex-1 py-3 bg-[#0A1128] text-white text-xs font-extrabold rounded-xl uppercase text-center flex items-center justify-center">📞 Click to Call</a>
-                  <a href={`https://wa.me/${adminConfig.phone}?text=Details of ID: 544${selectedAd.id}`} target="_blank" rel="noreferrer" className="flex-1 py-3 bg-[#25D366] text-white text-xs font-extrabold rounded-xl uppercase text-center flex items-center justify-center">💬 Chat on WhatsApp</a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 5. PREMIUM LUXURY DARK NAVY FOOTER WITH EARTH DEVELOPER'S BRANDING */}
       <footer className="bg-[#0A1128] border-t border-amber-500/20 text-white mt-20">
         <div className="max-w-7xl mx-auto px-4 py-12 md:px-8 grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -534,7 +503,6 @@ export default function HomePage() {
             <div className="flex flex-col space-y-1.5 text-xs text-gray-400 font-medium">
               <a href="/" className="hover:text-amber-400 transition-colors">Home Feed</a>
               <a href="/properties" className="hover:text-amber-400 transition-colors">All Listed Properties</a>
-              <a href="/#projects" className="hover:text-amber-400 transition-colors">Ongoing Launch Projects</a>
             </div>
           </div>
 
