@@ -11,24 +11,32 @@ function safeJSONSerialize(data) {
   }));
 }
 
-// 1. GET: Fetch active listing payload
+// 1. GET: Fetch listings dynamically with support for home filters
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const purpose = searchParams.get('purpose'); 
     const sub_category = searchParams.get('sub_category');
     
-    let queryText = 'SELECT * FROM listings WHERE status = $1';
-    let queryParams = ['active'];
+    // 🟢 CHANGED LOGIC: Shuru me pure table se saara data uthayenge (Active + Deleted)
+    // Taake admin panels (dashboard aur trash view) ko poora record index mil sake
+    let queryText = 'SELECT * FROM listings';
+    let queryParams = [];
+    let conditions = [];
 
+    // Agar purposefully frontend active filter mangta hai tabhi dynamic parameters dalenge
     if (purpose) {
       queryParams.push(purpose);
-      queryText += ` AND purpose = $${queryParams.length}`;
+      conditions.push(`purpose = $${queryParams.length}`);
     }
 
     if (sub_category) {
       queryParams.push(sub_category);
-      queryText += ` AND sub_category = $${queryParams.length}`;
+      conditions.push(`sub_category = $${queryParams.length}`);
+    }
+
+    if (conditions.length > 0) {
+      queryText += ' WHERE ' + conditions.join(' AND ');
     }
 
     queryText += ' ORDER BY refreshed_at DESC';
@@ -146,32 +154,31 @@ export async function POST(request) {
   }
 }
 
-// 🟢 3. DELETE: Secure listing deletion by ID
 // 3. DELETE: Soft delete or permanent wipe handler
 export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    const permanent = searchParams.get('permanent') === 'true'; // Check if hard delete requested
+    const permanent = searchParams.get('permanent') === 'true'; 
 
     if (!id) {
       return NextResponse.json({ error: 'Listing ID is required' }, { status: 400 });
     }
 
     let queryText = '';
+    let queryParams = [id];
+
     if (permanent) {
-      // 🔥 Hard Delete: Table se hamesha ke liye saaf
       queryText = 'DELETE FROM listings WHERE id = $1 RETURNING *;';
     } else {
-      // 📦 Soft Delete: Live site se gayb, Trash folder me shift
       queryText = "UPDATE listings SET status = 'deleted', refreshed_at = NOW() WHERE id = $1 RETURNING *;";
     }
 
-    const result = await sql.query(queryText, [id]);
+    const result = await sql.query(queryText, queryParams);
     const returnedRows = result.rows || result;
     
     if (returnedRows.length === 0) {
-      return NextResponse.json({ error: 'No listing found with this ID' }, { status: 404 });
+      return NextResponse.json({ error: 'No listing found with this identifier' }, { status: 404 });
     }
 
     return NextResponse.json({ 
