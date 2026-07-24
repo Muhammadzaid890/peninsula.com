@@ -1,63 +1,52 @@
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db'; 
+import jwt from 'jsonwebtoken';
+import { neon } from '@neondatabase/serverless';
 
-// Helper utility to safely serialize dates and nested arrays to JSON format
-function safeJSONSerialize(data) {
-  return JSON.parse(JSON.stringify(data, (key, value) => {
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-    return value;
-  }));
-}
+const sql = neon(process.env.DATABASE_URL);
+const JWT_SECRET = process.env.JWT_SECRET || 'peninsula_super_secret_key_2026';
 
-// 1. GET: Fetch listings dynamically with support for home filters
-export async function GET(request) {
+export async function GET(req) {
   try {
-    const { searchParams } = new URL(request.url);
-    const purpose = searchParams.get('purpose'); 
-    const sub_category = searchParams.get('sub_category');
-    
-    // 🟢 CHANGED LOGIC: Shuru me pure table se saara data uthayenge (Active + Deleted)
-    // Taake admin panels (dashboard aur trash view) ko poora record index mil sake
-    let queryText = 'SELECT * FROM listings';
-    let queryParams = [];
-    let conditions = [];
+    const { searchParams } = new URL(req.url);
+    const mainCategory = searchParams.get('main_category');
 
-    // Agar purposefully frontend active filter mangta hai tabhi dynamic parameters dalenge
-    if (purpose) {
-      queryParams.push(purpose);
-      conditions.push(`purpose = $${queryParams.length}`);
+    let listings;
+    if (mainCategory) {
+      listings = await sql`SELECT * FROM listings WHERE main_category = ${mainCategory} ORDER BY id DESC`;
+    } else {
+      listings = await sql`SELECT * FROM listings ORDER BY id DESC`;
     }
 
-    if (sub_category) {
-      queryParams.push(sub_category);
-      conditions.push(`sub_category = $${queryParams.length}`);
-    }
-
-    if (conditions.length > 0) {
-      queryText += ' WHERE ' + conditions.join(' AND ');
-    }
-
-    queryText += ' ORDER BY refreshed_at DESC';
-
-    const result = await sql.query(queryText, queryParams);
-    
-    const rows = result.rows || result;
-    const serializedRows = safeJSONSerialize(rows);
-
-    return NextResponse.json(serializedRows, { status: 200 });
+    return NextResponse.json(listings);
   } catch (err) {
-    console.error("Database read error:", err);
-    return NextResponse.json({ error: 'Internal Server Error Database' }, { status: 500 });
+    console.error('Fetch listings error:', err);
+    return NextResponse.json({ error: 'Failed to fetch listings' }, { status: 500 });
   }
 }
 
-// 2. POST: Secure fallback parser for dynamic listings insertion
-export async function POST(request) {
+export async function POST(req) {
   try {
-    const body = await request.json();
-    
+    // Extract User/Agent info from JWT Token Cookie
+    const cookieHeader = req.headers.get('cookie') || '';
+    const token = cookieHeader
+      .split('; ')
+      .find(row => row.startsWith('auth_token='))
+      ?.split('=')[1];
+
+    let agentPhone = '03331234201'; // Default Fallback Admin Phone
+    let agentName = 'System Admin';
+
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded.phone) agentPhone = decoded.phone;
+        if (decoded.name) agentName = decoded.name;
+      } catch (e) {
+        console.warn('JWT verification failed in listing post, fallback to default.');
+      }
+    }
+
+    const body = await req.json();
     const {
       title,
       price,
@@ -67,127 +56,29 @@ export async function POST(request) {
       purpose,
       main_category,
       sub_category,
-      images,
-      show_on_home, 
       commercial_zone,
-      description,
-      beds,
-      baths,
-      amenities,
-      listing_type
+      show_on_home,
+      description
     } = body;
 
-    if (!title || !price || !location || !area) {
-      return NextResponse.json({ error: 'Required payload elements missing' }, { status: 400 });
-    }
-
-    const queryText = `
+    // Insert listing with Agent Phone auto-attached
+    const result = await sql`
       INSERT INTO listings (
-        title, 
-        price, 
-        location, 
-        area, 
-        area_unit, 
-        purpose, 
-        main_category,
-        sub_category, 
-        ad_type, 
-        images, 
-        show_on_home, 
-        commercial_zone,
-        description,
-        beds,
-        baths,
-        amenities,
-        listing_type,
-        status, 
-        created_at, 
-        refreshed_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())
-      RETURNING *;
+        title, price, location, area, area_unit, purpose, 
+        main_category, sub_category, commercial_zone, show_on_home, 
+        description, agent_phone, agent_name, status
+      )
+      VALUES (
+        ${title}, ${price}, ${location}, ${area}, ${area_unit || 'sq.yd'}, ${purpose || 'sale'}, 
+        ${main_category}, ${sub_category || 'plot'}, ${commercial_zone || null}, ${show_on_home || false}, 
+        ${description || ''}, ${agentPhone}, ${agentName}, 'active'
+      )
+      RETURNING *
     `;
 
-    const parsedArea = area ? parseFloat(area) : 0;
-    const isShowOnHome = show_on_home === true;
-    const parsedBeds = beds ? parseInt(beds, 10) : null;
-    const parsedBaths = baths ? parseInt(baths, 10) : null;
-    const sanitizedAmenities = Array.isArray(amenities) ? amenities : [];
-
-    const queryParams = [
-      title,
-      price.toString(),
-      location,
-      parsedArea,
-      area_unit || 'sq.yd',
-      purpose || 'sale',
-      main_category || 'plot',
-      sub_category || 'plot',
-      'simple',
-      images || [],
-      isShowOnHome, 
-      isShowOnHome ? commercial_zone : null,
-      description || '',
-      isNaN(parsedBeds) ? null : parsedBeds,
-      isNaN(parsedBaths) ? null : parsedBaths,
-      sanitizedAmenities, 
-      listing_type || 'property',
-      'active'
-    ];
-
-    const result = await sql.query(queryText, queryParams);
-
-    const returnedRows = result.rows || result;
-    const createdRecord = Array.isArray(returnedRows) && returnedRows.length > 0 ? returnedRows[0] : null;
-
-    return NextResponse.json({ 
-      success: true, 
-      message: '🎉 Entry submitted successfully!', 
-      data: safeJSONSerialize(createdRecord)
-    }, { status: 201 });
-
+    return NextResponse.json(result[0], { status: 201 });
   } catch (err) {
-    console.error("Database insertion detailed stacktrace:", err);
-    return NextResponse.json({ 
-      error: 'Internal Server Error Database',
-      details: err.message || err 
-    }, { status: 500 });
-  }
-}
-
-// 3. DELETE: Soft delete or permanent wipe handler
-export async function DELETE(request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    const permanent = searchParams.get('permanent') === 'true'; 
-
-    if (!id) {
-      return NextResponse.json({ error: 'Listing ID is required' }, { status: 400 });
-    }
-
-    let queryText = '';
-    let queryParams = [id];
-
-    if (permanent) {
-      queryText = 'DELETE FROM listings WHERE id = $1 RETURNING *;';
-    } else {
-      queryText = "UPDATE listings SET status = 'deleted', refreshed_at = NOW() WHERE id = $1 RETURNING *;";
-    }
-
-    const result = await sql.query(queryText, queryParams);
-    const returnedRows = result.rows || result;
-    
-    if (returnedRows.length === 0) {
-      return NextResponse.json({ error: 'No listing found with this identifier' }, { status: 404 });
-    }
-
-    return NextResponse.json({ 
-      success: true, 
-      message: permanent ? '🔥 Permanently wiped from DB!' : '📦 Shifted to Trash Folder!' 
-    }, { status: 200 });
-
-  } catch (err) {
-    console.error("Database delete error:", err);
-    return NextResponse.json({ error: 'Internal Server Error Database', details: err.message || err }, { status: 500 });
+    console.error('Post listing error:', err);
+    return NextResponse.json({ error: 'Failed to create listing' }, { status: 500 });
   }
 }

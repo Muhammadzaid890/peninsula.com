@@ -1,24 +1,23 @@
 import { NextResponse } from 'next/server';
 
 export function middleware(request) {
-  const url = request.nextUrl.clone();
-  
-  // Vercel deployment par request cookies se session check hota hai
-  const userRole = request.cookies.get('userRole')?.value;
+  const { pathname } = request.nextUrl;
 
   // Agar user /admin wale kisi bhi route par ja raha hai
-  if (url.pathname.startsWith('/admin')) {
-    // Agar cookie mein role 'admin' nahi hai, to direct block karke home par redirect karo
-    if (userRole !== 'admin') {
-      url.pathname = '/';
-      return NextResponse.redirect(url);
+  if (pathname.startsWith('/admin')) {
+    const userRole = request.cookies.get('userRole')?.value;
+    const authToken = request.cookies.get('auth_token')?.value;
+
+    // Strict redirect ke bajaye allow check karein
+    if (!userRole && !authToken) {
+      // Agar cookie bilkul nahi hai tabhi login par bhejo
+      return NextResponse.redirect(new URL('/login', request.url));
     }
   }
 
   return NextResponse.next();
 }
 
-// System ko batana ke middleware sirf /admin ke saare pages par trigger ho
 export const config = {
   matcher: ['/admin/:path*'],
 };

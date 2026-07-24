@@ -3,391 +3,299 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const categoryMapping = {
-  home: ['house', 'flat', 'portion'],
-  plot: ['residential plot', 'commercial plot'],
-  commercial: ['building', 'office', 'shop', 'warehouse']
-};
-
-const amenityOptions = [
-  'Electricity', 'Water', 'Gas', 'Sewerage', 'Boundary Wall', 'Security'
+const COMMERCIAL_ZONES = [
+  { id: 'business_zone', name: 'BUSINESS ZONE COM' },
+  { id: 'beach_avenue', name: 'BEACH AVENUE COM' },
+  { id: 'sahil_com', name: 'SAHIL COMMERCIAL' },
+  { id: 'zulfiqar_com', name: 'ZULFIQAR COM' },
+  { id: 'al_murtaza', name: 'AL MURTAZA COM' },
+  { id: 'peninsula_com', name: 'PENINSULA COM' },
+  { id: 'dha_plot_com', name: 'DHA PLOT COMMERCIAL' },
 ];
+
+const RESIDENTIAL_YARD_SIZES = ['300', '500', '600', '666', '1000', '2000'];
 
 export default function AddAdPage() {
   const router = useRouter();
-  const [listingType, setListingType] = useState('property'); // 'property' or 'project'
-  const [mainCat, setMainCat] = useState('home');
-  const [subCat, setSubCat] = useState('house');
-  const [selectedAmenities, setSelectedAmenities] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 🟢 Accordion Placement States
-  const [showOnHome, setShowOnHome] = useState(false);
-  const [commercialZone, setCommercialZone] = useState('business_zone');
+  const [formData, setFormData] = useState({
+    title: '',
+    price: '',
+    location: 'DHA Phase 8',
+    area: '1000',
+    area_unit: 'sq.yd',
+    purpose: 'sale',
+    main_category: 'residential',
+    sub_category: 'plot',
+    commercial_zone: 'zulfiqar_com',
+    show_on_home: false,
+    description: ''
+  });
 
-  const handleAmenityChange = (amenity) => {
-    if (selectedAmenities.includes(amenity)) {
-      setSelectedAmenities(selectedAmenities.filter(item => item !== amenity));
-    } else {
-      setSelectedAmenities([...selectedAmenities, amenity]);
-    }
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    setLoading(true);
+    setMessage('');
 
-    const formData = new FormData(e.target);
-    const imageFiles = formData.getAll('images'); 
-
-    let uploadedImageUrls = [];
-
-    // 1. Upload Images to Cloudinary if selected
-    if (imageFiles && imageFiles.length > 0 && imageFiles[0].size > 0) {
-      setUploading(true);
-      try {
-        for (const file of imageFiles) {
-          const uploadData = new FormData();
-          uploadData.append('file', file);
-
-          const uploadRes = await fetch('/api/upload', {
-            method: 'POST',
-            body: uploadData,
-          });
-
-          const uploadResult = await uploadRes.json();
-          if (uploadResult.success) {
-            uploadedImageUrls.push(uploadResult.url);
-          }
-        }
-      } catch (err) {
-        console.error("Upload error:", err);
-        alert("❌ Images upload karne mein masla aaya!");
-        setUploading(false);
-        setIsSubmitting(false);
-        return;
-      }
-      setUploading(false);
+    // 🔍 Read current user session info
+    const userRole = localStorage.getItem('userRole') || 'agent';
+    const rawUserInfo = localStorage.getItem('user_info');
+    let userInfo = {};
+    
+    try {
+      if (rawUserInfo) userInfo = JSON.parse(rawUserInfo);
+    } catch (err) {
+      console.error(err);
     }
 
-    // 2. Build Payload matching the updated listings route
-    const adData = {
-      title: formData.get('title'),
-      price: formData.get('price'),
-      location: formData.get('location'),
-      description: formData.get('description'),
-      purpose: formData.get('purpose'),
-      main_category: mainCat,
-      sub_category: subCat,
-      images: uploadedImageUrls, 
-      area: formData.get('area'),
-      area_unit: formData.get('area_unit'),
-      beds: mainCat === 'home' ? formData.get('beds') : null,
-      baths: mainCat === 'home' ? formData.get('baths') : null,
-      amenities: selectedAmenities,
-      listing_type: listingType,
-      show_on_home: showOnHome, // Sent to backend boolean field
-      commercial_zone: showOnHome ? commercialZone : null // Target accordion bar mapping
-    };
+    const agentCredits = userInfo.ad_credits !== undefined ? Number(userInfo.ad_credits) : 0;
+
+    // ⚡ Quota Check: Agar role Agent hai aur Credits <= 0 hain, to status 'pending' rakhein
+    const isPendingApproval = userRole === 'agent' && agentCredits <= 0;
+    const initialStatus = isPendingApproval ? 'pending' : 'active';
 
     try {
-      const response = await fetch('/api/listings', {
+      const res = await fetch('/api/listings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(adData),
+        body: JSON.stringify({
+          ...formData,
+          location: 'DHA Phase 8', // Force Phase 8
+          status: initialStatus, // 'active' or 'pending'
+          agent_name: userInfo.name || (userRole === 'admin' ? 'System Admin' : 'Agent'),
+          agent_phone: userInfo.phone || '03331234201',
+          images: []
+        })
       });
 
-      const result = await response.json();
-      if (result.success) {
-        alert('🎉 Ad/Project successfully publish ho gaya!');
-        e.target.reset();
-        setSelectedAmenities([]);
-        setListingType('property');
-        setShowOnHome(false);
-        
-        // Redirect based on routing selection
-        router.push(showOnHome ? '/' : '/properties');
+      const data = await res.json();
+
+      if (res.ok) {
+        if (isPendingApproval) {
+          setMessage('⏳ Aapka ad quota khatam ho chuka hai! Ad Admin Approval ke liye Inactive / Pending section mein bhej diya gaya hai.');
+        } else {
+          // Deduct 1 credit locally for agent if he had active quota
+          if (userRole === 'agent' && agentCredits > 0) {
+            userInfo.ad_credits = Math.max(0, agentCredits - 1);
+            localStorage.setItem('user_info', JSON.stringify(userInfo));
+          }
+          setMessage('🎉 Phase 8 Listing successfully posted!');
+        }
+
+        setTimeout(() => {
+          if (isPendingApproval) {
+            router.push('/admin/inactive-ads');
+          } else if (formData.main_category === 'residential') {
+            router.push('/residential');
+          } else {
+            router.push('/commercial');
+          }
+        }, 1800);
       } else {
-        alert(`❌ Error: ${result.error}`);
+        setMessage(`❌ Error: ${data.error || 'Failed to post ad'}`);
       }
-    } catch (error) {
-      alert('❌ Connection failed!');
+    } catch (err) {
+      console.error(err);
+      setMessage('❌ Network connection error');
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] text-[#0F172A] font-sans py-12 px-4">
+    <div className="max-w-4xl mx-auto space-y-6">
       
-      {/* 🟢 TOP NAVIGATION BUTTONS (BACK ANCHORS) */}
-      <div className="max-w-3xl mx-auto mb-6 flex flex-wrap gap-4">
+      {/* Header Container */}
+      <div className="bg-[#0A1128] text-white p-6 rounded-3xl border border-amber-500/20 shadow-xl flex items-center justify-between">
+        <div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+            Phase 8 Portal
+          </span>
+          <h1 className="text-xl md:text-2xl font-black text-amber-400 uppercase tracking-wide mt-1">
+            ➕ Post New Listing
+          </h1>
+          <p className="text-xs text-slate-400 font-semibold mt-0.5">
+            Add Residential Size Plots or Commercial Zone Listings for DHA Phase 8
+          </p>
+        </div>
         <button 
-          onClick={() => router.push('/admin')}
-          className="flex items-center space-x-2 text-xs font-black uppercase tracking-wider text-[#0A1128] hover:text-amber-600 bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200 transition-colors focus:outline-none"
+          onClick={() => router.back()}
+          className="text-xs font-extrabold uppercase px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-xl border border-slate-700 transition-all cursor-pointer"
         >
-          <span>⬅</span> <span>Back to Admin Dashboard</span>
-        </button>
-        <button 
-          onClick={() => router.push('/')}
-          className="flex items-center space-x-2 text-xs font-black uppercase tracking-wider text-[#0A1128] hover:text-amber-600 bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200 transition-colors focus:outline-none"
-        >
-          <span>🏠</span> <span>Back to Home</span>
+          ← Back
         </button>
       </div>
 
-      <div className="max-w-3xl mx-auto bg-white border border-gray-200/80 rounded-3xl overflow-hidden shadow-2xl">
-        
-        {/* Navy Blue Header Panel matching the brand */}
-        <div className="bg-[#0A1128] text-white p-6 md:p-8 border-b border-amber-500/20">
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-500 bg-amber-500/10 px-3 py-1 rounded-full">
-            Admin Management
-          </span>
-          <h1 className="text-2xl md:text-3xl font-black mt-2">
-            Create Listing / Booking Entry
-          </h1>
-          <p className="text-gray-300 text-xs mt-1">Publish standard listings or newly launching booking projects.</p>
+      {message && (
+        <div className={`p-4 rounded-2xl text-xs font-bold text-center border shadow-sm transition-all ${
+          message.includes('🎉') 
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+            : message.includes('⏳')
+            ? 'bg-amber-50 text-amber-800 border-amber-200'
+            : 'bg-red-50 text-red-800 border-red-200'
+        }`}>
+          {message}
         </div>
+      )}
 
-        {/* Content Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 md:p-10 space-y-6">
+      {/* Main Form Container */}
+      <div className="bg-white p-6 md:p-10 rounded-3xl border shadow-xl">
+        <form onSubmit={handleSubmit} className="space-y-6">
           
-          {/* SYSTEM SELECTOR: Property vs Booking Project */}
+          {/* Ad Title */}
           <div>
-            <label className="block text-xs uppercase tracking-wider text-gray-400 font-bold mb-2">Classification / Ad Type</label>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setListingType('property')}
-                className={`py-3 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all border ${
-                  listingType === 'property' 
-                    ? 'bg-[#0A1128] text-white border-[#0A1128] shadow-md' 
-                    : 'bg-slate-50 text-gray-500 border-gray-200 hover:bg-gray-100'
-                }`}
-              >
-                🏠 Standard Property Ad
-              </button>
-              <button
-                type="button"
-                onClick={() => setListingType('project')}
-                className={`py-3 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all border ${
-                  listingType === 'project' 
-                    ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/10' 
-                    : 'bg-slate-50 text-gray-500 border-gray-200 hover:bg-gray-100'
-                }`}
-              >
-                🏗️ New Project / Booking Scheme
-              </button>
-            </div>
-          </div>
-
-          {/* Title */}
-          <div>
-            <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">Title / Advertisement Header</label>
+            <label className="block text-xs font-black uppercase text-slate-700 mb-1.5">Listing Title *</label>
             <input 
+              type="text" 
               name="title" 
               required 
-              placeholder={listingType === 'project' ? "e.g., Peninsula Mall & Residency - 3 Bed Booking" : "e.g., DHA Phase 8 - Zone D - Residential Plot"} 
-              className="w-full px-4 py-3 bg-slate-50 border border-gray-200 rounded-xl font-semibold text-sm focus:outline-none focus:border-[#0A1128]"
+              placeholder="e.g. 1000 Sq Yd Prime Location Plot in Phase 8" 
+              value={formData.title} 
+              onChange={handleChange}
+              className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-amber-500 transition-all"
             />
           </div>
 
-          {/* Price & Location */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Category Selector & Phase Lock */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">
-                {listingType === 'project' ? "Booking Starting From / Price" : "Price / Demand (Rs)"}
-              </label>
+              <label className="block text-xs font-black uppercase text-slate-700 mb-1.5">Main Category *</label>
+              <select 
+                name="main_category" 
+                value={formData.main_category} 
+                onChange={handleChange}
+                className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-amber-500 transition-all"
+              >
+                <option value="residential">🏡 Residential (Phase 8)</option>
+                <option value="commercial">🏢 Commercial (Phase 8)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-black uppercase text-slate-700 mb-1.5">Location Sector</label>
               <input 
+                type="text" 
+                disabled 
+                value="📍 DHA Phase 8 (Locked)" 
+                className="w-full p-3.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-black text-amber-700 cursor-not-allowed"
+              />
+            </div>
+          </div>
+
+          {/* Price & Size / Zone Logic */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-black uppercase text-slate-700 mb-1.5">Price / Demand (PKR) *</label>
+              <input 
+                type="text" 
                 name="price" 
                 required 
-                placeholder="e.g., 90,000,000 or 15 Lacs Down" 
-                className="w-full px-4 py-3 bg-slate-50 border border-gray-200 rounded-xl font-semibold text-sm focus:outline-none focus:border-[#0A1128]"
+                placeholder="e.g. 85,00,000" 
+                value={formData.price} 
+                onChange={handleChange}
+                className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-amber-500 transition-all"
               />
             </div>
-            <div>
-              <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">Location / Site Address</label>
-              <input 
-                name="location" 
-                required 
-                placeholder="e.g., Bukhari Commercial, DHA Phase 6, Karachi" 
-                className="w-full px-4 py-3 bg-slate-50 border border-gray-200 rounded-xl font-semibold text-sm focus:outline-none focus:border-[#0A1128]"
-              />
-            </div>
-          </div>
 
-          {/* Purpose & Categories */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">Purpose</label>
-              <select name="purpose" className="w-full px-4 py-3 bg-slate-50 border border-gray-200 rounded-xl font-semibold text-sm focus:outline-none">
-                <option value="sale">For Sale / Booking</option>
-                <option value="rent">For Rent</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">Main Category</label>
-              <select 
-                value={mainCat} 
-                onChange={(e) => {
-                  setMainCat(e.target.value);
-                  setSubCat(categoryMapping[e.target.value][0]);
-                }}
-                className="w-full px-4 py-3 bg-slate-50 border border-gray-200 rounded-xl font-semibold text-sm focus:outline-none"
-              >
-                <option value="home">🏠 Home / Building / Flat</option>
-                <option value="plot">🗺️ Plot</option>
-                <option value="commercial">🏢 Commercial Hub</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">Sub-Category</label>
-              <select 
-                value={subCat} 
-                onChange={(e) => setSubCat(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 border border-gray-200 rounded-xl font-semibold text-sm focus:outline-none capitalize"
-              >
-                {categoryMapping[mainCat].map(sub => (
-                  <option key={sub} value={sub}>{sub}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* 🟢 DYNAMIC GATEWAY: SHOW ON ACCORDION TARGETING BAR */}
-          <div className="p-4 bg-amber-500/5 rounded-2xl border-2 border-dashed border-amber-500/20 space-y-4">
-            <div className="flex items-center justify-between">
+            {/* If Residential -> Select Yard Size */}
+            {formData.main_category === 'residential' ? (
               <div>
-                <label className="block text-xs uppercase text-[#0A1128] font-black">Show on Home Page Accordion List?</label>
-                <span className="text-[10px] text-gray-400 block lowercase font-normal mt-0.5">If yes, this listing will render inside the text matrix lists on home.</span>
-              </div>
-              <input 
-                type="checkbox" 
-                checked={showOnHome} 
-                onChange={(e) => setShowOnHome(e.target.checked)} 
-                className="w-5 h-5 accent-[#0A1128] cursor-pointer"
-              />
-            </div>
-
-            {showOnHome && (
-              <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                <label className="block text-[11px] uppercase mb-1 text-amber-700 font-black">Select Target Commercial Accordion Bar:</label>
+                <label className="block text-xs font-black uppercase text-slate-700 mb-1.5">Phase 8 Yard Size *</label>
                 <select 
-                  value={commercialZone} 
-                  onChange={(e) => setCommercialZone(e.target.value)}
-                  className="w-full p-3 bg-white border border-amber-300 rounded-xl text-slate-900 font-black focus:outline-none text-xs"
+                  name="area" 
+                  value={formData.area} 
+                  onChange={handleChange}
+                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-amber-500 transition-all"
                 >
-                  <option value="business_zone">BUSINESS ZONE COM</option>
-                  <option value="beach_avenue">BEACH AVENUE COM</option>
-                  <option value="sahil_com">SAHIL COMMERCIAL</option>
-                  <option value="zulfiqar_com">ZULFIQAR COM</option>
-                  <option value="al_murtaza">AL MURTAZA COM</option>
-                  <option value="peninsula_com">PENINSULA COM</option>
-                  <option value="dha_plot_com">DHA PLOT COMMERCIAL</option>
+                  {RESIDENTIAL_YARD_SIZES.map((s) => (
+                    <option key={s} value={s}>{s} YRD</option>
+                  ))}
                 </select>
               </div>
-            )}
-          </div>
-
-          {/* Specifications */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">Total Cover Area / Size</label>
-              <div className="flex">
+            ) : (
+              /* If Commercial -> Area Input */
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-700 mb-1.5">Area Size (Sq.Yd) *</label>
                 <input 
+                  type="text" 
                   name="area" 
                   required 
-                  type="number" 
-                  placeholder="500" 
-                  className="w-2/3 px-4 py-3 bg-slate-50 border border-gray-200 rounded-l-xl font-semibold text-sm focus:outline-none"
+                  placeholder="e.g. 100, 200, 500" 
+                  value={formData.area} 
+                  onChange={handleChange}
+                  className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-amber-500 transition-all"
                 />
-                <select name="area_unit" className="w-1/3 px-2 py-3 bg-slate-100 border-y border-r border-gray-200 rounded-r-xl font-bold text-xs">
-                  <option value="sq.yd">Sq. Yd</option>
-                  <option value="sq.ft">Sq. Ft</option>
-                </select>
-              </div>
-            </div>
-
-            {mainCat === 'home' && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">Beds</label>
-                  <select name="beds" className="w-full px-4 py-3 bg-slate-50 border border-gray-200 rounded-xl font-semibold text-sm focus:outline-none">
-                    {[1, 2, 3, 4, 5, 6].map(num => <option key={num} value={num}>{num}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">Baths</label>
-                  <select name="baths" className="w-full px-4 py-3 bg-slate-50 border border-gray-200 rounded-xl font-semibold text-sm focus:outline-none">
-                    {[1, 2, 3, 4, 5, 6].map(num => <option key={num} value={num}>{num}</option>)}
-                  </select>
-                </div>
               </div>
             )}
           </div>
 
-          {/* Cloudinary Image Input */}
-          <div>
-            <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">Upload High-Res Media Showcase</label>
-            <input 
-              name="images" 
-              type="file" 
-              multiple 
-              accept="image/*"
-              className="w-full px-4 py-3 bg-slate-50 border border-gray-200 rounded-xl cursor-pointer text-xs font-semibold text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-[#0A1128] file:text-white hover:file:bg-slate-800"
-            />
-          </div>
+          {/* Conditional Commercial Spot Selector */}
+          {formData.main_category === 'commercial' && (
+            <div className="bg-amber-50/60 p-5 rounded-2xl border border-amber-200 space-y-3">
+              <label className="block text-xs font-black uppercase text-amber-900">Phase 8 Commercial Zone / Spot *</label>
+              <select 
+                name="commercial_zone" 
+                value={formData.commercial_zone} 
+                onChange={handleChange}
+                className="w-full p-3.5 bg-white border border-amber-300 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-amber-500 transition-all shadow-sm"
+              >
+                {COMMERCIAL_ZONES.map((zone) => (
+                  <option key={zone.id} value={zone.id}>{zone.name}</option>
+                ))}
+              </select>
 
-          {/* Amenities Features Checkbox grid */}
-          <div>
-            <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-3">Amenities Included</label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-gray-200">
-              {amenityOptions.map(amenity => (
-                <label key={amenity} className="flex items-center space-x-3 text-xs font-bold text-gray-600 cursor-pointer hover:text-[#0A1128]">
-                  <input 
-                    type="checkbox" 
-                    checked={selectedAmenities.includes(amenity)}
-                    onChange={() => handleAmenityChange(amenity)}
-                    className="accent-[#0A1128] w-4 h-4 rounded" 
-                  />
-                  <span>{amenity}</span>
+              <div className="flex items-center space-x-2.5 pt-2">
+                <input 
+                  type="checkbox" 
+                  id="show_on_home" 
+                  name="show_on_home" 
+                  checked={formData.show_on_home} 
+                  onChange={handleChange}
+                  className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 border-gray-300"
+                />
+                <label htmlFor="show_on_home" className="text-xs font-extrabold text-slate-800 cursor-pointer">
+                  Show inside Home Page Commercial Accordion
                 </label>
-              ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Description */}
           <div>
-            <label className="block text-xs uppercase tracking-wider text-[#0A1128] font-bold mb-2">Detailed Synopsis / Instalment Structure</label>
+            <label className="block text-xs font-black uppercase text-slate-700 mb-1.5">Description (Optional)</label>
             <textarea 
               name="description" 
-              rows="4" 
-              placeholder="Provide clear landmark updates or payment instalment breakdown here..." 
-              className="w-full p-4 bg-slate-50 border border-gray-200 rounded-xl font-semibold text-sm focus:outline-none focus:border-[#0A1128] resize-none"
+              rows="3" 
+              placeholder="Add key features, lane position, or demand rate details..." 
+              value={formData.description} 
+              onChange={handleChange}
+              className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:border-amber-500 transition-all"
             ></textarea>
           </div>
 
-          {/* Action Submission Trigger Button */}
+          {/* Submit Button */}
           <button 
             type="submit" 
-            disabled={isSubmitting}
-            className={`w-full py-4 text-xs font-extrabold uppercase tracking-widest text-white rounded-xl transition-all duration-300 shadow-xl ${
-              listingType === 'project' 
-                ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950' 
-                : 'bg-gradient-to-r from-[#0A1128] to-slate-800 hover:from-slate-900 hover:to-slate-950'
-            } ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
+            disabled={loading}
+            className="w-full py-4 bg-[#0A1128] hover:bg-slate-900 text-amber-400 font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-xl disabled:opacity-50 cursor-pointer"
           >
-            {uploading 
-              ? '⚡ Uploading Visual Assets to Cloudinary...' 
-              : isSubmitting 
-              ? '⏳ Registering Entry into System...' 
-              : `🚀 Publish New ${listingType === 'project' ? 'Project Booking' : 'Property Ad'}`
-            }
+            {loading ? 'Processing Listing...' : '🚀 Post Phase 8 Listing Now'}
           </button>
 
         </form>
       </div>
+
     </div>
   );
 }
